@@ -26,6 +26,7 @@ def mpl_pause_background (delay):
 def FFT_2D_phys2spec (field, NXSp,NYSp):
 	"""
 	Fourier transform from 2D physical space to spectral space.
+	Author : Emmanuel Dormy.
 	"""
 	Nx,Ny = field.shape
 	# Total nb of points
@@ -45,6 +46,7 @@ def FFT_2D_phys2spec (field, NXSp,NYSp):
 def FFT_2D_spec2phys (ft_field, Nx,Ny):
 	"""
 	Fourier transform from spectral space to 2D physical space.
+	Author : Emmanuel Dormy.
 	"""
 	NXSp,NYSp = ft_field.shape
 	# Total nb of points
@@ -68,15 +70,16 @@ def SemiLag (u,v, q, Δx,Δy, Δt):
 	"""
 	Semi-lagrangian 2D advection of the scalar field q by (u,v).
 	Reslting ghost points are undefined and have to be set afterwards.
+	Author : Emmanuel Dormy.
 	"""
 
 	# Matrices where 1 is right, 0 is left or center
-	Mx2 = np.sign(np.sign(u[1:-1,1:-1]) + 1.)
-	Mx1 = 1. - Mx2
+	Mx2 = np.sign(np.sign(u[1:-1,1:-1]) + 1)
+	Mx1 = 1 - Mx2
 
 	# Matrices where 1 is up, 0 is down or center
-	My2 = np.sign(np.sign(v[1:-1,1:-1]) + 1.)
-	My1 = 1. - My2
+	My2 = np.sign(np.sign(v[1:-1,1:-1]) + 1)
+	My1 = 1 - My2
 
 	# Matrices of absolute values for u and v
 	au = np.abs(u[1:-1,1:-1])
@@ -87,7 +90,7 @@ def SemiLag (u,v, q, Δx,Δy, Δt):
 	Cc = (Δx - au*Δt) * (Δy - av*Δt) / ΔxΔy
 	Ce = Δt*Δt*au * av / ΔxΔy
 	Cmx = (Δx - au*Δt) * av*Δt / ΔxΔy
-	Cmy =  Δt*au*(Δy - Δt*av) / ΔxΔy
+	Cmy = Δt*au * (Δy - av*Δt) / ΔxΔy
 
 	# Computes the advected quantity
 	adv_q = np.empty_like(q)
@@ -109,11 +112,12 @@ def SemiLag2 (u,v, q, Δx,Δy, Δt):
 	Second order semi-lagrangian 2D advection of the scalar field q by (u,v),
 	based on SemiLag, with forward-backward error correction.
 	Reslting ghost points are undefined and have to be set afterwards.
+	Author : Emmanuel Dormy.
 	"""
-	qstar = SemiLag(u,v, q, Δx,Δy, Δt)
-	qtilde = SemiLag(-u,-v, qstar, Δx,Δy, Δt)    
-	qstar = q + (q-qtilde)/2;
-	adv_q = SemiLag(u,v, qstar, Δx,Δy, Δt)
+	qforw = SemiLag(u,v, q, Δx,Δy, Δt)
+	qback = SemiLag(-u,-v, qforw, Δx,Δy, Δt)    
+	# qcorr = q + (q-qback)/2
+	adv_q = SemiLag(u,v, (3*q-qback)/2, Δx,Δy, Δt)
 	return adv_q
 
 
@@ -124,6 +128,7 @@ def Laplacian (f, Δx,Δy):
 	Laplacian of the 2D scalar field f[i,j], which must contain ghost points.
 	Finite differences (1,-2,1), order 2.
 	Reslting ghost points are undefined and have to be set afterwards.
+	Author : Emmanuel Dormy.
 	"""
 	Δx_2, Δy_2 = 1/(Δx*Δx), 1/(Δy*Δy)
 
@@ -140,6 +145,7 @@ def Divergence (u,v, Δx,Δy):
 	Divergence of the 2D vector field (u,v)[i,j], which must contain ghost points.
 	Centered finite differences (1,0,-1)/2.
 	Reslting ghost points are undefined and have to be set afterwards.
+	Author : Emmanuel Dormy.
 	"""
 	div = np.empty_like(u)
 	div[1:-1,1:-1] = (
@@ -154,6 +160,7 @@ def FD_1D_Laplacian_matrix (N_phys, Δx, BCdir_left, BCdir_right):
 	1D Laplacian FD matrix. N_phys is the number of physical grid points, ie. /not/ including
 	possible ghost points. `BCdir_left` and `BCdir_right` set boundary conditions to Dirichlet
 	if True and Neumann if False, in a ghost-points-approach.
+	Author : Emmanuel Dormy.
 	"""
 	
 	# building the sparse matrix (tridiagonal 1,-2,1)
@@ -171,6 +178,7 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	2D Laplacian FD matrix, Kronecker product of 1D matrices.
 	See `FD_1D_Laplacian_matrix` for documentation.
 	In CFD with fractional time stepping, typically used for pressure determination / solenoidal projection.
+	Author : Emmanuel Dormy.
 	"""
 
 	DXX = FD_1D_Laplacian_matrix(Nx_phys, Δx, BCdir_left, BCdir_right)
@@ -191,7 +199,8 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 
 	LAP0 = sp.dia_matrix((dataNYNXi,offset), shape=(Ny_phys*Nx_phys,Ny_phys*Nx_phys))
   
-	return LAP + LAP0
+#	return LAP + LAP0
+	return LAP
 
 
 
