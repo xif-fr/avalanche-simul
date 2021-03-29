@@ -93,7 +93,7 @@ def SemiLag (u,v, q, Δx,Δy, Δt):
 	Cmy = Δt*au * (Δy - av*Δt) / ΔxΔy
 
 	# Computes the advected quantity
-	adv_q = np.empty_like(q)
+	adv_q = np.zeros_like(q)
 	adv_q[1:-1,1:-1] = (
 		  Cc * q[1:-1, 1:-1]
 		+ Ce * ( Mx1*My1 * q[2: , 2: ] 
@@ -107,7 +107,7 @@ def SemiLag (u,v, q, Δx,Δy, Δt):
 	)
 	return adv_q
 
-def SemiLag2 (u,v, q, Δx,Δy, Δt):
+def SemiLag2 (u,v, q, Δx,Δy, Δt, coeff=1):
 	"""
 	Second order semi-lagrangian 2D advection of the scalar field q by (u,v),
 	based on SemiLag, with forward-backward error correction.
@@ -116,8 +116,16 @@ def SemiLag2 (u,v, q, Δx,Δy, Δt):
 	"""
 	qforw = SemiLag(u,v, q, Δx,Δy, Δt)
 	qback = SemiLag(-u,-v, qforw, Δx,Δy, Δt)    
-	# qcorr = q + (q-qback)/2
-	adv_q = SemiLag(u,v, (3*q-qback)/2, Δx,Δy, Δt)
+	qcorr = coeff*(q-qback)/2
+	qcorr[ 0, :] = 0
+	qcorr[-1, :] = 0
+	qcorr[:,  0] = 0
+	qcorr[:, -1] = 0
+	qcorr[ 1, :] = 0
+	qcorr[-2, :] = 0
+	qcorr[:,  1] = 0
+	qcorr[:, -2] = 0
+	adv_q = SemiLag(u,v, q+qcorr, Δx,Δy, Δt)
 	return adv_q
 
 
@@ -182,7 +190,7 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	"""
 
 	DXX = FD_1D_Laplacian_matrix(Nx_phys, Δx, BCdir_left, BCdir_right)
-	DYY = FD_1D_Laplacian_matrix(Ny_phys, Δy, BCdir_top, BCdir_bot)
+	DYY = FD_1D_Laplacian_matrix(Ny_phys, Δy, BCdir_bot, BCdir_top)
 	
 	####### 2D Laplace operator
 	LAP = sp.kron(DXX,sp.eye(Ny_phys,Ny_phys)) + sp.kron(sp.eye(Nx_phys,Nx_phys),DYY)
