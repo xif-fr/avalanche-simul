@@ -167,7 +167,7 @@ def FD_1D_Laplacian_matrix (N_phys, Δx, BCdir_left, BCdir_right):
 	diagonals[1][0]  = -3 if BCdir_left else -1.
 	diagonals[1][-1] = -3 if BCdir_right else -1.
 	offsets = np.array([-1,0,1])
-	D2 = sp.dia_matrix((diagonals,offsets), shape=(N_phys,N_phys)) / Δx**2
+	D2 = sp.diags(diagonals,offsets, shape=(N_phys,N_phys),format = 'csr') / Δx**2
 	
 	return D2
 
@@ -184,7 +184,7 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	DYY = FD_1D_Laplacian_matrix(Ny_phys, Δy, BCdir_top, BCdir_bot)
 	
 	####### 2D Laplace operator
-	LAP = sp.kron(DXX,sp.eye(Ny_phys,Ny_phys)) + sp.kron(sp.eye(Nx_phys,Nx_phys),DYY)
+	LAP = sp.kron(DXX,sp.eye(Ny_phys,Ny_phys),format = 'csr') + sp.kron(sp.eye(Nx_phys,Nx_phys),DYY,format = 'csr')
 	
 	####### Correction matrix
 
@@ -196,7 +196,7 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	# The value is set at one point (here [0][1]) to ensure uniqueness
 	dataNYNXi[0][1] = -1 / Δx**2
 
-	LAP0 = sp.dia_matrix((dataNYNXi,offset), shape=(Ny_phys*Nx_phys,Ny_phys*Nx_phys))
+	LAP0 = sp.diags(dataNYNXi,offset, shape=(Ny_phys*Nx_phys,Ny_phys*Nx_phys),format = 'csr')
   
 	return LAP + LAP0
 	#return LAP
@@ -234,49 +234,3 @@ def Resolve(splu,RHS):
 	x = splu.solve(f2)
 
 	return x.reshape(RHS.shape)
-     
-### Opérateurs sous forme matricielle :
-# Retourne la matrice correspondant à (X.Nablda). Ici sous version 2D, prend Nx, Ny la taille de la grille
-def grad(s,Δx,Δy):
-    dX = 1/Δx/2 * (s[1:,:]-s[:-1,:])[1:-1,1:-1]
-    dY = 1/Δy/2 * (s[:,1:]-s[:,:-1])[1:-1,1:-1]
-    return dX, dY
-def advect(u,v,Nx,Ny):
-    dNX = [1/Δx/2 * u*np.ones(NXx), np.zeros(Nx), -1/Δx/2 * u*np.ones(Nx)]
-    dNX = [1/Δy/2*v*np.ones(Ny), np.zeros(Ny), -1/Δy/2*v*np.ones(Ny)]##Il manque un truc,non ? C'est pas des np.ones qu'il faut mais un autre truc
-    return sp.kron(sp.eye(Ny,Ny), dNx) + sp.kron(dNy, sp.eye(Nx,Nx))
-def get_rho(u,v,ρ,Nx,Ny,Δx,Δy,Δt):
-    A = LUdecomposition(np.eye(Nx*Ny) +Δt*advect(u,v,Nx,Ny))
-    ## Attention aux conditions limites !
-    return Resolve(A,ρ)
-def approx_u(u,v,ρ,ρ_,s,fx,fy,Δx,Δy,Δt,LAP):
-    A = np.eye(Nx*Ny) + ρ*Δt/ρ_ * advect(u,v,Nx,Ny) - Δt/Re * LAP
-    LU = LUdecomposition(A)
-    Nabsx,Nabsy = grad(s,Δx,Δy)
-    u_hatx = Resolve(LU,Δt*f-Δt/Re * Nabsx + u)
-    u_haty = Resolve(LU,Δt*f-Δt/Re * Nabsy + u)
-    ## Attention aux conditions limites !
-    return u_hatx,u_haty
-
-def get_phi(ρ,u_hatx,u_haty,Δx,Δy,Nx,Ny):
-    LapPart = 1/ρ*LAP
-    Δx2 = Δx*Δx*4
-    Δy2 = Δy*Δy*4
-    dataNx = [np.ones(Nx), np.zeros(Nx), -np.ones(Nx)]
-    dataNy = [np.ones(Ny), np.zeros(Ny), -np.ones(Ny)]
-    offsets = np.array([-1,0,1]) 
-    Dx = sp.dia_matrix((dataNx,offsets), shape=(Nx,Nx)) ## Matrice de dérivée selon x## Matrice de dérivée selon x
-    Dy = sp.dia_matrix((dataNy,offsets), shape=(Ny,Ny)) ## Matrice de dérivée selon x## Matrice de dérivée selon y
-    Dx = sp.kron(sp.eye(Ny,Ny), Dx)
-    Dy = sp.kron(Dy, sp.eye(Nx,Nx))
-    Mat = 1/Δx2 * (ρ**-1[1:,:]-ρ**-1[:-1,:])[1:-1,1:-1]*Dx + 1/Δy2 * (ρ**-1[:,1:]-ρ**-1[:,:-1])[1:-1,1:-1]*Dy + LapPart
-    RHS = - Divergence(u_hatx,u_haty, Δx,Δy)
-    
-    phi = Resolve(Mat, RHS)
-    return phi
-
-def update_u_s(u,v,s,ρ,phi,u_hatx,u_haty,Δx,Δy):
-    dX,dY = grad(phi,Δx,Δy)
-    u = u_hatx + 1/ρ * dX
-    v = u_haty + 1/ρ * dY
-    s = s - Divergence(u_hatx,u_haty, Δx,Δy)
