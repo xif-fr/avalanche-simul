@@ -19,51 +19,6 @@ def mpl_pause_background (delay):
 			if canvas.figure.stale:
 				canvas.draw()
 			canvas.start_event_loop(delay)
-
-########################## Spectral methods routines ##########################
-
-
-def FFT_2D_phys2spec (field, NXSp,NYSp):
-	"""
-	Fourier transform from 2D physical space to spectral space.
-	Author : Emmanuel Dormy.
-	"""
-	Nx,Ny = field.shape
-	# Total nb of points
-	NN = Nx*Ny
-	# Fourier transform
-	ft_field_temp = fft.fft2( field / NN )
-	# Only keep the relevant modes
-	NXSp_2 = int(NXSp/2)
-	NYSp_2 = int(NYSp/2)
-	ft_field = np.zeros((NXSp,NYSp), dtype=complex)
-	ft_field[0:NXSp_2   , 0:NYSp_2   ] = ft_field_temp[0:NXSp_2    , 0:NYSp_2    ]
-	ft_field[NXSp_2:NXSp, 0:NYSp_2   ] = ft_field_temp[Nx-NXSp_2:Nx, 0:NYSp_2    ]
-	ft_field[0:NXSp_2   , NYSp_2:NYSp] = ft_field_temp[0:NXSp_2    , Ny-NYSp_2:Ny]
-	ft_field[NXSp_2:NXSp, NYSp_2:NYSp] = ft_field_temp[Nx-NXSp_2:Nx, Ny-NYSp_2:Ny]
-	return ft_field
-
-def FFT_2D_spec2phys (ft_field, Nx,Ny):
-	"""
-	Fourier transform from spectral space to 2D physical space.
-	Author : Emmanuel Dormy.
-	"""
-	NXSp,NYSp = ft_field.shape
-	# Total nb of points
-	NN = Nx*Ny
-	# Temporary array to FFT, filled with relevant modes
-	ft_field_temp = np.zeros((Nx,Ny), dtype=complex)
-	NXSp_2 = int(NXSp/2)
-	NYSp_2 = int(NYSp/2)
-	ft_field_temp[0:NXSp_2    , 0:NYSp_2    ] = ft_field[0:NXSp_2   , 0:NYSp_2   ]
-	ft_field_temp[Nx-NXSp_2:Nx, 0:NYSp_2    ] = ft_field[NXSp_2:NXSp, 0:NYSp_2   ]
-	ft_field_temp[0:NXSp_2    , Ny-NYSp_2:Ny] = ft_field[0:NXSp_2   , NYSp_2:NYSp]
-	ft_field_temp[Nx-NXSp_2:Nx, Ny-NYSp_2:Ny] = ft_field[NXSp_2:NXSp, NYSp_2:NYSp]
-	# Inverse Fourier transform
-	field = NN * np.real( fft.ifft2(ft_field_temp) )
-	return field
-
-
 ########################## Semi-Lagrangian advection routines ##########################
 
 def SemiLag (u,v, q, Δx,Δy, Δt):
@@ -127,7 +82,7 @@ def Laplacian (f, Δx,Δy):
 	"""
 	Laplacian of the 2D scalar field f[i,j], which must contain ghost points.
 	Finite differences (1,-2,1), order 2.
-	Reslting ghost points are undefined and have to be set afterwards.
+	Resulting ghost points are undefined and have to be set afterwards.
 	Author : Emmanuel Dormy.
 	"""
 	Δx_2, Δy_2 = 1/(Δx*Δx), 1/(Δy*Δy)
@@ -198,7 +153,7 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 
 	LAP0 = sp.diags(dataNYNXi,offset, shape=(Ny_phys*Nx_phys,Ny_phys*Nx_phys),format = 'csr')
   
-	return LAP + LAP0
+	return LAP #+ LAP0
 	#return LAP
 
 
