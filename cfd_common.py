@@ -194,52 +194,30 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	
 	####### 2D Laplace operator
 	LAP = sp.kron(DXX,sp.eye(Ny_phys,Ny_phys)) + sp.kron(sp.eye(Nx_phys,Nx_phys),DYY)
-	
-	####### Correction matrix
 
-	### Upper Diagonal terms
-	dataNYNXi = [np.zeros(Ny_phys*Nx_phys)]
-	offset = np.array([1])
+	# LU decomposition
+	LU_decomp = lg.splu(LAP.tocsc(),)
 
-	### Fix coef: 2+(-1) = 1 ==> Dirichlet at a single point
-	# The value is set at one point (here [0][1]) to ensure uniqueness
-	dataNYNXi[0][1] = -1 / Δx**2
+	# Solver function LAP.X = RHS
+	def LAP_solver (RHS, BCdir_val_left=None, BCdir_val_right=None, BCdir_val_top=None, BCdir_val_bot=None):
+		# include Dirichlet boundary conditions in the RHS
+		RHS_BC = np.copy(RHS)
+		if BCdir_val_left is not None:
+			if not BCdir_left: raise ValueError("Can't set left boundary value if the matrix is not constructed with left Dirichlet BC")
+			RHS_BC[0,:] += -2 * BCdir_val_left / Δx**2
+		if BCdir_val_right is not None:
+			if not BCdir_right: raise ValueError("Can't set right boundary value if the matrix is not constructed with right Dirichlet BC")
+			RHS_BC[-1,:] += -2 * BCdir_val_right / Δx**2
+		if BCdir_val_top is not None:
+			if not BCdir_top: raise ValueError("Can't set top boundary value if the matrix is not constructed with top Dirichlet BC")
+			RHS_BC[:,0] += -2 * BCdir_val_top / Δx**2
+		if BCdir_val_bot is not None:
+			if not BCdir_bot: raise ValueError("Can't set bottom boundary value if the matrix is not constructed with bottom Dirichlet BC")
+			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δx**2
+		# flatten
+		f2 = RHS_BC.ravel()
+		# solve
+		X = LU_decomp.solve(f2)
+		return X.reshape(RHS.shape)
 
-	LAP0 = sp.dia_matrix((dataNYNXi,offset), shape=(Ny_phys*Nx_phys,Ny_phys*Nx_phys))
-  
-#	return LAP + LAP0
-	return LAP
-
-
-
-def LUdecomposition(LAP):
-	"""
-	return the Incomplete LU decomposition 
-	of a sparse matrix LAP
-	"""
-	return  lg.splu(LAP.tocsc(),)
-
-
-def Resolve(splu,RHS):
-	"""
-	solve the system
-
-	SPLU * x = RHS
-
-	Args:
-	--RHS: 2D array((NY,NX))
-	--splu: (Incomplete) LU decomposed matrix 
-			shape (NY*NX, NY*NX)
-
-	Return: x = array[NY,NX]
-	
-	Rem1: taille matrice fonction des CL 
-
-	"""
-	# array 2D -> array 1D
-	f2 = RHS.ravel()
-
-	# Solving the linear system
-	x = splu.solve(f2)
-
-	return x.reshape(RHS.shape)
+	return LAP, LAP_solver
