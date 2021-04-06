@@ -118,7 +118,7 @@ def FD_1D_Laplacian_matrix (N_phys, Δx, BCdir_left, BCdir_right):
 	"""
 	
 	# building the sparse matrix (tridiagonal 1,-2,1)
-	diagonals = [np.ones(N_phys), -2*np.ones(N_phys), np.ones(N_phys)]
+	diagonals = [np.ones(N_phys-1), -2*np.ones(N_phys), np.ones(N_phys-1)]
 	diagonals[1][0]  = -3 if BCdir_left else -1.
 	diagonals[1][-1] = -3 if BCdir_right else -1.
 	offsets = np.array([-1,0,1])
