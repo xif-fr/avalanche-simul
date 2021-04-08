@@ -7,7 +7,6 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as lg
 
 
-
 def mpl_pause_background (delay):
 	"""
 	Replaces plt.pause(). The windows stay in background.
@@ -224,67 +223,74 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 	return LAP, LAP_solver
 
 
-def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_right=True, BCdir_top=True, BCdir_bot=True):
+def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_right=True, BCdir_top=True, BCdir_bot=True, backend_build_C=False):
 	"""
 	2D ∇·(ρ∇) FD matrix, where ρ is a matrix containing ghost points.
 	Reduces to the laplacian matrix FD_2D_Laplacian_matrix is ρ is a constant field.
 	"""
 
-	Δx2 = Δx**2
-	Δy2 = Δy**2
-	row = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
-	col = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
-	val = np.zeros(5*Nx_phys*Ny_phys)
-	N = Ny_phys
-	k = 0
-	for i in range(0,Nx_phys):
-		for j in range(0,Ny_phys):
-			c = i*N+j
-			vcenter = 0
+	if backend_build_C:
+		from cfdutils import ffi, lib as cfdutils_lib
+		row = np.zeros(5*Nx_phys*Ny_phys, dtype=np.uint32)
+		col = np.zeros(5*Nx_phys*Ny_phys, dtype=np.uint32)
+		val = np.zeros(5*Nx_phys*Ny_phys, dtype=np.float64)
+		cfdutils_lib.build_FD_2D_DrhoD_matrix(Nx_phys, Ny_phys, Δx, Δy, ffi.cast("double*",ρ.ctypes.data), BCdir_left, BCdir_right, BCdir_top, BCdir_bot, ffi.cast("uint32_t*",row.ctypes.data), ffi.cast("uint32_t*",col.ctypes.data), ffi.cast("double*",val.ctypes.data))
+	else:
+		Δx2 = Δx**2
+		Δy2 = Δy**2
+		row = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
+		col = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
+		val = np.zeros(5*Nx_phys*Ny_phys)
+		N = Ny_phys
+		k = 0
+		for i in range(0,Nx_phys):
+			for j in range(0,Ny_phys):
+				c = i*N+j
+				vcenter = 0
 
-			if j < Ny_phys-1:
-				row[k] = i*N+(j+1)
+				if j < Ny_phys-1:
+					row[k] = i*N+(j+1)
+					col[k] = c
+					val[k] = 1/ρ[i+1,j+1] / Δy2
+					k += 1
+					vcenter += -1/ρ[i+1,j+1] / Δy2   # ρ0
+				elif BCdir_bot:
+					vcenter += -2/ρ[i+1,j+1] / Δy2
+
+				if j > 0:
+					row[k] = i*N+(j-1)
+					col[k] = c
+					val[k] = 1/ρ[i+1,j] / Δy2
+					k += 1
+					vcenter += -1/ρ[i+1,j] / Δy2   # ρ-
+				elif BCdir_top:
+					vcenter += -2/ρ[i+1,j] / Δy2
+
+				if i < Nx_phys-1:
+					row[k] = (i+1)*N+j
+					col[k] = c
+					val[k] = 1/ρ[i+1,j+1] / Δx2
+					k += 1
+					vcenter += -1/ρ[i+1,j+1] / Δx2   # ρ0
+				elif BCdir_right:
+					vcenter += -2/ρ[i+1,j+1] / Δx2
+
+				if i > 0:
+					row[k] = (i-1)*N+j
+					col[k] = c
+					val[k] = 1/ρ[i,j+1] / Δx2
+					k += 1
+					vcenter += -1/ρ[i,j+1] / Δx2   # ρ-
+				elif BCdir_left:
+					vcenter += -2/ρ[i,j+1] / Δx2
+
+				row[k] = i*N+j
 				col[k] = c
-				val[k] = 1/ρ[i+1,j+1] / Δy2
+				val[k] = vcenter
 				k += 1
-				vcenter += -1/ρ[i+1,j+1] / Δy2   # ρ0
-			elif BCdir_bot:
-				vcenter += -2/ρ[i+1,j+1] / Δy2
 
-			if j > 0:
-				row[k] = i*N+(j-1)
-				col[k] = c
-				val[k] = 1/ρ[i+1,j] / Δy2
-				k += 1
-				vcenter += -1/ρ[i+1,j] / Δy2   # ρ-
-			elif BCdir_top:
-				vcenter += -2/ρ[i+1,j] / Δy2
-
-			if i < Nx_phys-1:
-				row[k] = (i+1)*N+j
-				col[k] = c
-				val[k] = 1/ρ[i+1,j+1] / Δx2
-				k += 1
-				vcenter += -1/ρ[i+1,j+1] / Δx2   # ρ0
-			elif BCdir_right:
-				vcenter += -2/ρ[i+1,j+1] / Δx2
-
-			if i > 0:
-				row[k] = (i-1)*N+j
-				col[k] = c
-				val[k] = 1/ρ[i,j+1] / Δx2
-				k += 1
-				vcenter += -1/ρ[i,j+1] / Δx2   # ρ-
-			elif BCdir_left:
-				vcenter += -2/ρ[i,j+1] / Δx2
-
-			row[k] = i*N+j
-			col[k] = c
-			val[k] = vcenter
-			k += 1
-
-	DρD = sp.coo_matrix((val,(row,col)), shape=(Nx_phys*Ny_phys,Nx_phys*Ny_phys))
-	LU_decomp = lg.splu(DρD.tocsc(),)
+	DρD = sp.csc_matrix((val,(row,col)), shape=(Nx_phys*Ny_phys,Nx_phys*Ny_phys))
+	LU_decomp = lg.splu(DρD,)
 
 	# Solver function DρD.X = RHS
 	def DρD_solver (RHS, BCdir_val_left=None, BCdir_val_right=None, BCdir_val_top=None, BCdir_val_bot=None):
@@ -306,6 +312,7 @@ def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_ri
 		f2 = RHS_BC.ravel()
 		# solve
 		X = LU_decomp.solve(f2)
+#		X = lg.spsolve(DρD, f2)
 		return X.reshape(RHS.shape)
 
 	return DρD, DρD_solver
