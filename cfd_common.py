@@ -2,6 +2,7 @@ import numpy as np
 import scipy.fftpack as fft
 import matplotlib
 import matplotlib.pyplot as plt
+import scipy
 import scipy.sparse as sp
 import scipy.sparse.linalg as lg
 
@@ -221,3 +222,90 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 		return X.reshape(RHS.shape)
 
 	return LAP, LAP_solver
+
+
+def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_right=True, BCdir_top=True, BCdir_bot=True):
+	"""
+	2D ∇·(ρ∇) FD matrix, where ρ is a matrix containing ghost points.
+	Reduces to the laplacian matrix FD_2D_Laplacian_matrix is ρ is a constant field.
+	"""
+
+	Δx2 = Δx**2
+	Δy2 = Δy**2
+	row = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
+	col = np.zeros(5*Nx_phys*Ny_phys, dtype=int)
+	val = np.zeros(5*Nx_phys*Ny_phys)
+	N = Ny_phys
+	k = 0
+	for i in range(0,Nx_phys):
+		for j in range(0,Ny_phys):
+			c = i*N+j
+			vcenter = 0
+
+			if j < Ny_phys-1:
+				row[k] = i*N+(j+1)
+				col[k] = c
+				val[k] = 1/ρ[i+1,j+1] / Δy2
+				k += 1
+				vcenter += -1/ρ[i+1,j+1] / Δy2   # ρ0
+			elif BCdir_bot:
+				vcenter += -2/ρ[i+1,j+1] / Δy2
+
+			if j > 0:
+				row[k] = i*N+(j-1)
+				col[k] = c
+				val[k] = 1/ρ[i+1,j] / Δy2
+				k += 1
+				vcenter += -1/ρ[i+1,j] / Δy2   # ρ-
+			elif BCdir_top:
+				vcenter += -2/ρ[i+1,j] / Δy2
+
+			if i < Nx_phys-1:
+				row[k] = (i+1)*N+j
+				col[k] = c
+				val[k] = 1/ρ[i+1,j+1] / Δx2
+				k += 1
+				vcenter += -1/ρ[i+1,j+1] / Δx2   # ρ0
+			elif BCdir_right:
+				vcenter += -2/ρ[i+1,j+1] / Δx2
+
+			if i > 0:
+				row[k] = (i-1)*N+j
+				col[k] = c
+				val[k] = 1/ρ[i,j+1] / Δx2
+				k += 1
+				vcenter += -1/ρ[i,j+1] / Δx2   # ρ-
+			elif BCdir_left:
+				vcenter += -2/ρ[i,j+1] / Δx2
+
+			row[k] = i*N+j
+			col[k] = c
+			val[k] = vcenter
+			k += 1
+
+	DρD = sp.coo_matrix((val,(row,col)), shape=(Nx_phys*Ny_phys,Nx_phys*Ny_phys))
+	LU_decomp = lg.splu(DρD.tocsc(),)
+
+	# Solver function DρD.X = RHS
+	def DρD_solver (RHS, BCdir_val_left=None, BCdir_val_right=None, BCdir_val_top=None, BCdir_val_bot=None):
+		# include Dirichlet boundary conditions in the RHS
+		RHS_BC = np.copy(RHS)
+		if BCdir_val_left is not None:
+			if not BCdir_left: raise ValueError("Can't set left boundary value if the matrix is not constructed with left Dirichlet BC")
+			RHS_BC[0,:] += -2 * BCdir_val_left / Δx**2 / ρ[0,1:-1]
+		if BCdir_val_right is not None:
+			if not BCdir_right: raise ValueError("Can't set right boundary value if the matrix is not constructed with right Dirichlet BC")
+			RHS_BC[-1,:] += -2 * BCdir_val_right / Δx**2 / ρ[-2,1:-1]
+		if BCdir_val_top is not None:
+			if not BCdir_top: raise ValueError("Can't set top boundary value if the matrix is not constructed with top Dirichlet BC")
+			RHS_BC[:,0] += -2 * BCdir_val_top / Δx**2 / ρ[1:-1,0]
+		if BCdir_val_bot is not None:
+			if not BCdir_bot: raise ValueError("Can't set bottom boundary value if the matrix is not constructed with bottom Dirichlet BC")
+			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δx**2 / ρ[1:-1,-2]
+		# flatten
+		f2 = RHS_BC.ravel()
+		# solve
+		X = LU_decomp.solve(f2)
+		return X.reshape(RHS.shape)
+
+	return DρD, DρD_solver
