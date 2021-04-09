@@ -20,6 +20,7 @@ def mpl_pause_background (delay):
 				canvas.draw()
 			canvas.start_event_loop(delay)
 
+
 ########################## Spectral methods routines ##########################
 
 
@@ -210,10 +211,10 @@ def FD_2D_Laplacian_matrix (Nx_phys, Ny_phys, Δx, Δy, BCdir_left=True, BCdir_r
 			RHS_BC[-1,:] += -2 * BCdir_val_right / Δx**2
 		if BCdir_val_top is not None:
 			if not BCdir_top: raise ValueError("Can't set top boundary value if the matrix is not constructed with top Dirichlet BC")
-			RHS_BC[:,0] += -2 * BCdir_val_top / Δx**2
+			RHS_BC[:,0] += -2 * BCdir_val_top / Δy**2
 		if BCdir_val_bot is not None:
 			if not BCdir_bot: raise ValueError("Can't set bottom boundary value if the matrix is not constructed with bottom Dirichlet BC")
-			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δx**2
+			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δy**2
 		# flatten
 		f2 = RHS_BC.ravel()
 		# solve
@@ -304,10 +305,10 @@ def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_ri
 			RHS_BC[-1,:] += -2 * BCdir_val_right / Δx**2 / ρ[-2,1:-1]
 		if BCdir_val_top is not None:
 			if not BCdir_top: raise ValueError("Can't set top boundary value if the matrix is not constructed with top Dirichlet BC")
-			RHS_BC[:,0] += -2 * BCdir_val_top / Δx**2 / ρ[1:-1,0]
+			RHS_BC[:,0] += -2 * BCdir_val_top / Δy**2 / ρ[1:-1,0]
 		if BCdir_val_bot is not None:
 			if not BCdir_bot: raise ValueError("Can't set bottom boundary value if the matrix is not constructed with bottom Dirichlet BC")
-			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δx**2 / ρ[1:-1,-2]
+			RHS_BC[:,-1] += -2 * BCdir_val_bot / Δy**2 / ρ[1:-1,-2]
 		# flatten
 		f2 = RHS_BC.ravel()
 		# solve
@@ -316,3 +317,39 @@ def FD_2D_DρD_matrix (Nx_phys, Ny_phys, Δx, Δy, ρ, BCdir_left=True, BCdir_ri
 		return X.reshape(RHS.shape)
 
 	return DρD, DρD_solver
+
+
+def FD_2D_ILapAdv_matrix (Nx_phys, Ny_phys, Δx, Δy, Δt, µ, ρ, ρ_next, u, v, BCdir_left=True, BCdir_right=True, BCdir_top=True, BCdir_bot=True):
+
+	from cfdutils import ffi, lib as cfdutils_lib
+	row = np.zeros(5*Nx_phys*Ny_phys, dtype=np.uint32)
+	col = np.zeros(5*Nx_phys*Ny_phys, dtype=np.uint32)
+	val = np.zeros(5*Nx_phys*Ny_phys, dtype=np.float64)
+	cfdutils_lib.build_FD_2D_ILapAdv_centered_matrix(Nx_phys, Ny_phys, Δx, Δy, ffi.cast("double*",ρ.ctypes.data), ffi.cast("double*",ρ_next.ctypes.data), ffi.cast("double*",u.ctypes.data), ffi.cast("double*",v.ctypes.data), µ, Δt, BCdir_left, BCdir_right, BCdir_top, BCdir_bot, ffi.cast("uint32_t*",row.ctypes.data), ffi.cast("uint32_t*",col.ctypes.data), ffi.cast("double*",val.ctypes.data))
+	
+	ILapAdv = sp.csc_matrix((val,(row,col)), shape=(Nx_phys*Ny_phys,Nx_phys*Ny_phys))
+	LU_decomp = lg.splu(ILapAdv,)
+
+	# Solver function A.X = RHS
+	def ILapAdv_solver (RHS, BCdir_val_left=None, BCdir_val_right=None, BCdir_val_top=None, BCdir_val_bot=None):
+		# include Dirichlet boundary conditions in the RHS
+		RHS_BC = np.copy(RHS)
+		if BCdir_val_left is not None:
+			if not BCdir_left: raise ValueError("Can't set left boundary value if the matrix is not constructed with left Dirichlet BC")
+			RHS_BC[0,:] += BCdir_val_left * ( 2*µ / Δx**2 + ρ_next[1,1:-1] * u[1,1:-1] / Δx )
+		if BCdir_val_right is not None:
+			if not BCdir_right: raise ValueError("Can't set right boundary value if the matrix is not constructed with right Dirichlet BC")
+			RHS_BC[-1,:] += BCdir_val_right * ( 2*µ / Δx**2 - ρ_next[-2,1:-1] * u[-2,1:-1] / Δx )
+		if BCdir_val_top is not None:
+			if not BCdir_top: raise ValueError("Can't set top boundary value if the matrix is not constructed with top Dirichlet BC")
+			RHS_BC[:,0] += BCdir_val_top * ( 2*µ / Δy**2 - ρ_next[1:-1,1] * v[1:-1,1] / Δy )
+		if BCdir_val_bot is not None:
+			if not BCdir_bot: raise ValueError("Can't set bottom boundary value if the matrix is not constructed with bottom Dirichlet BC")
+			RHS_BC[:,-1] += BCdir_val_bot * ( 2*µ / Δy**2 + ρ_next[1:-1,-2] * v[1:-1,-2] / Δy )
+		# flatten
+		f2 = RHS_BC.ravel()
+		# solve
+		X = LU_decomp.solve(f2)
+		return X.reshape(RHS.shape)
+
+	return ILapAdv, ILapAdv_solver
